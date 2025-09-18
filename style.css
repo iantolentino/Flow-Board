@@ -1,0 +1,280 @@
+:root {
+  --bg: #f9fafb;
+  --sidebar: #1f2937;
+  --sidebar-text: #f3f4f6;
+  --muted: #9ca3af;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  display: flex;
+  height: 100vh;
+  font-family: system-ui, sans-serif;
+  background: var(--bg);
+  color: #111827;
+}
+
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: var(--sidebar);
+  color: var(--sidebar-text);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.sidebar h1 {
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+}
+.sidebar button {
+  background: #374151;
+  color: var(--sidebar-text);
+  border: none;
+  padding: .5rem;
+  margin-bottom: .25rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .2s;
+}
+.sidebar button:hover { background: #4b5563; }
+
+/* Main workspace */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: .75rem 1rem;
+  background: #fff;
+  border-bottom: 1px solid #e5e7eb;
+}
+.topbar h2 { font-size: 1.25rem; }
+.topbar button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  padding: .4rem .75rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.topbar button:hover { background: #1d4ed8; }
+
+/* Kanban board */
+#kanbanView {
+  flex: 1;
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  overflow-x: auto;
+}
+.column {
+  flex: 1;
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: .5rem;
+  display: flex;
+  flex-direction: column;
+}
+.column h3 {
+  margin-bottom: .5rem;
+  font-size: 1rem;
+}
+[data-status="todo"] h3 { color: #6b7280; }       /* Gray */
+[data-status="inprogress"] h3 { color: #f59e0b; } /* Amber */
+[data-status="done"] h3 { color: #10b981; }       /* Green */
+
+.task-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+
+/* Task cards */
+.task {
+  background: #fff;
+  border-radius: 8px;
+  padding: .5rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border-left: 6px solid #ccc;
+  transition: transform .2s;
+  cursor: grab;
+}
+.task:hover { transform: scale(1.02); }
+.task h4 { font-size: .95rem; margin-bottom: .25rem; }
+.task .desc { font-size: .8rem; color: var(--muted); margin-bottom: .25rem; }
+.task .meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: .75rem;
+  color: var(--muted);
+}
+.priority {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: .7rem;
+  font-weight: bold;
+  color: #fff;
+}
+.priority.low {
+  background: linear-gradient(135deg, #34d399, #10b981);
+}
+.priority.medium {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+}
+.priority.high {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+}
+
+/* Calendar */
+#calendarView {
+  flex: 1;
+  padding: 1rem;
+  display: none;
+}
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: .5rem;
+}
+.calendar-header h3 { font-size: 1.1rem; }
+.calendar-header button {
+  background: #e5e7eb;
+  border: none;
+  padding: .25rem .5rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: .25rem;
+}
+.day {
+  min-height: 90px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: .25rem;
+  display: flex;
+  flex-direction: column;
+  font-size: .8rem;
+  cursor: pointer;
+}
+.day.today { border: 2px solid #2563eb; }
+.day strong { margin-bottom: .25rem; }
+.day-task {
+  font-size: .7rem;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  padding: 1px 3px;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.day-task.low {
+  background: linear-gradient(135deg, #34d399, #10b981);
+}
+.day-task.medium {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+}
+.day-task.high {
+  background: linear-gradient(135deg, #f87171, #ef4444);
+}
+
+/* Vault */
+#vaultView {
+  flex: 1;
+  padding: 1rem;
+  display: none;
+}
+.vault-controls {
+  margin-bottom: 1rem;
+  display: flex;
+  gap: .5rem;
+}
+.vault-controls input {
+  flex: 1;
+  padding: .4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+.vault-controls button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  padding: .4rem .75rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.vault-controls button:hover { background: #1d4ed8; }
+
+.vault-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.vault-table th, .vault-table td {
+  border: 1px solid #e5e7eb;
+  padding: .5rem;
+  text-align: left;
+}
+.vault-table button {
+  margin-right: .25rem;
+  background: #f3f4f6;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: .25rem .5rem;
+  cursor: pointer;
+}
+.vault-table button:hover { background: #e5e7eb; }
+
+/* Budget */
+#budgetView {
+  flex: 1;
+  display: none;
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+}
+.modal-content input, .modal-content textarea, .modal-content select {
+  width: 100%;
+  padding: .4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+.modal-content button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  padding: .4rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.modal-content button:hover { background: #1d4ed8; }
