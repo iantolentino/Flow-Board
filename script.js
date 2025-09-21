@@ -1,8 +1,8 @@
 /* script.js - Kanban + Calendar + Vault + Budget messaging
-   - Robust drag & drop using dataTransfer
-   - Kanban <-> Calendar sync
-   - Unscheduled tasks appear in Calendar
-   - Theme + iframe messaging
+   - Fixed Kanban <-> Calendar sync
+   - Drag & drop that persists status
+   - Add from calendar day => creates Kanban task with dueDate
+   - Theme toggle sends message to budget iframe
 */
 
 /* -------------------- App State -------------------- */
@@ -11,7 +11,7 @@ let vaultEntries = JSON.parse(localStorage.getItem("vault_entries")) || [];
 let currentDate = new Date();
 let currentMonth = currentDate.getMonth();
 let currentYear = currentDate.getFullYear();
-let editingTaskId = null; // null => create mode
+let editingTaskId = null; // used for edit mode
 
 /* -------------------- Utilities -------------------- */
 function saveTasksToLocal() {
@@ -40,6 +40,11 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+function normalizeDateString(d) {
+  if (!d) return "";
+  // keep YYYY-MM-DD
+  return String(d).slice(0, 10);
 }
 
 /* -------------------- Modal (Add/Edit Task) -------------------- */
@@ -89,7 +94,7 @@ function closeModal() {
 function saveTask() {
   const title = document.getElementById("taskTitle").value.trim();
   const desc = document.getElementById("taskDesc").value.trim();
-  const dueDate = document.getElementById("taskDate").value;
+  const dueDate = normalizeDateString(document.getElementById("taskDate").value);
   const priority = document.getElementById("taskPriority").value || "medium";
   if (!title) { alert("Title required"); return; }
 
@@ -114,10 +119,12 @@ function saveTask() {
 
 function renderTasks() {
   ["todo", "inprogress", "done"].forEach(status => {
-    const container = document.getElementById(status);
+    const container = document.querySelector(`.column[data-status="${status}"]`);
     if (!container) return;
-    container.innerHTML = "";
-    tasks.filter(t => t.status === status).forEach(t => {
+    const list = container.querySelector('.task-list');
+    if (!list) return;
+    list.innerHTML = "";
+    tasks.filter(t => (t.status || 'todo') === status).forEach(t => {
       const div = document.createElement("div");
       div.className = "task";
       div.draggable = true;
@@ -135,15 +142,11 @@ function renderTasks() {
         </div>
       `;
 
-      // full edit modal on dblclick
+      // double-click to edit
       div.addEventListener("dblclick", () => openModal(null, t.id));
 
       addDragEvents(div);
-      container.querySelector('.task-list') ? container.querySelector('.task-list').appendChild(div) : container.appendChild(div);
-
-      // ensure element is inside the .task-list node (we keep original structure)
-      const list = container.querySelector('.task-list') || container;
-      if (list && list !== div.parentElement) list.appendChild(div);
+      list.appendChild(div);
     });
   });
 
@@ -151,28 +154,23 @@ function renderTasks() {
   setupColumnDrop();
 }
 
-/* drag helpers (robust across browsers) */
+/* drag helpers (robust) */
 function addDragEvents(el) {
   el.addEventListener("dragstart", e => {
     try {
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", String(el.dataset.id));
-    } catch (err) {
-      // some browsers may restrict setData during certain contexts — we still keep a fallback
-    }
+    } catch (err) {}
     el.classList.add("dragging");
   });
 
   el.addEventListener("dragend", e => {
     e.target.classList.remove("dragging");
-    // cleanup any visual drop hints
     document.querySelectorAll('.task-list, .column').forEach(node => node.classList.remove('drag-over'));
   });
-
-  // keyboard accessibility: space/enter to pick up or toggle status quick (optional)
 }
 
-/* attach droppable behavior to columns and their inner lists */
+/* attach droppable behavior to lists and columns */
 function setupColumnDrop() {
   const lists = Array.from(document.querySelectorAll(".task-list"));
   const columns = Array.from(document.querySelectorAll(".column"));
@@ -192,27 +190,22 @@ function setupColumnDrop() {
       e.preventDefault();
       node.classList.remove("drag-over");
 
-      // prefer dataTransfer id
       let idStr = null;
       try { idStr = e.dataTransfer.getData("text/plain"); } catch (err) { idStr = null; }
       let id = idStr ? parseInt(idStr, 10) : null;
 
-      // fallback to .dragging element
       if (!id) {
         const dragging = document.querySelector(".dragging");
         if (dragging) id = parseInt(dragging.dataset.id, 10);
       }
       if (!id) return;
 
-      // Determine target status: if dropped on .task-list use its id, else if dropped on .column use the column's task-list id
       let targetStatus = null;
       if (node.classList.contains('task-list')) {
         targetStatus = node.id;
       } else {
-        // if column, find its inner .task-list child
         const tl = node.querySelector('.task-list');
         if (tl && tl.id) targetStatus = tl.id;
-        // fallback: if column has data-status attribute
         if (!targetStatus && node.dataset && node.dataset.status) targetStatus = node.dataset.status;
       }
       if (!targetStatus) return;
@@ -227,7 +220,6 @@ function setupColumnDrop() {
     });
   };
 
-  // attach to lists and columns
   lists.forEach(addHandlers);
   columns.forEach(addHandlers);
 }
@@ -241,18 +233,18 @@ function renderCalendar() {
   title.textContent = `${new Date(currentYear, currentMonth).toLocaleString("default", { month: "long" })} ${currentYear}`;
 
   // unscheduled tasks
-  const unscheduled = document.getElementById("unscheduledList");
-  unscheduled.innerHTML = "";
-  const uns = tasks.filter(t => !t.dueDate);
+  const unscheduledEl = document.getElementById("unscheduledList");
+  unscheduledEl.innerHTML = "";
+  const uns = tasks.filter(t => !t.dueDate || normalizeDateString(t.dueDate) === "");
   if (uns.length === 0) {
-    unscheduled.innerHTML = `<div class="muted">No unscheduled tasks</div>`;
+    unscheduledEl.innerHTML = `<div class="muted">No unscheduled tasks</div>`;
   } else {
     uns.forEach(t => {
       const el = document.createElement("div");
       el.className = "unscheduled-item";
       el.innerHTML = `<strong>${escapeHtml(t.title)}</strong> <div class="muted small-badge">${t.priority.toUpperCase()}</div>`;
       el.addEventListener("click", () => openModal(null, t.id));
-      unscheduled.appendChild(el);
+      unscheduledEl.appendChild(el);
     });
   }
 
@@ -275,7 +267,8 @@ function renderCalendar() {
       dayCell.classList.add("today");
     }
 
-    const dayTasks = tasks.filter(t => t.dueDate === dateStr);
+    // filter tasks by normalized date string
+    const dayTasks = tasks.filter(t => normalizeDateString(t.dueDate) === dateStr);
     dayTasks.slice(0, 3).forEach(t => {
       const b = document.createElement("div");
       b.className = `day-task ${t.priority}`;
@@ -283,7 +276,7 @@ function renderCalendar() {
       b.textContent = t.title.length > 22 ? t.title.slice(0, 19) + "..." : t.title;
       b.addEventListener("click", ev => {
         ev.stopPropagation();
-        openModal(null, t.id); // full edit
+        openModal(null, t.id); // edit
       });
       dayCell.appendChild(b);
     });
@@ -295,6 +288,7 @@ function renderCalendar() {
       dayCell.appendChild(more);
     }
 
+    // click a day to create a task on that date
     dayCell.addEventListener("click", () => openModal(dateStr));
     grid.appendChild(dayCell);
   }
@@ -345,7 +339,7 @@ function showBudget() {
   try { iframe.contentWindow.location.reload(); } catch (e) {}
 }
 
-/* -------------------- Vault (add/view/delete/render) -------------------- */
+/* -------------------- Vault -------------------- */
 function addVaultEntry() {
   const name = document.getElementById("vaultName").value.trim();
   const user = document.getElementById("vaultUser").value.trim();
@@ -500,6 +494,7 @@ function initTheme() {
       localStorage.setItem("myboard_theme", "dark");
     }
 
+    // Notify budget iframe about theme change
     const iframe = document.getElementById("budgetIframe");
     try {
       if (iframe && iframe.contentWindow) {
