@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kanban + Calendar + Vault</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <h1>⚡ MyBoard</h1>
+    <button onclick="openModal()">➕ Add Task</button>
+    <button onclick="exportJSON()">💾 Export JSON</button>
+    <button onclick="importJSON()">📂 Import JSON</button>
+    <button onclick="showKanban()">📋 Kanban Board</button>
+    <button onclick="showCalendar()">🗓 Calendar</button>
+    <button onclick="showVault()">🔐 Password Vault</button>
+    <button onclick="showBudget()">💰 Budget Tracker</button>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <h2 id="viewTitle">Project Workspace</h2>
+      <div class="topbar-actions">
+        <button onclick="openModal()">New Task</button>
+      </div>
+    </div>
+
+    <!-- Kanban -->
+    <main id="kanbanView">
+      <div class="column" data-status="todo">
+        <h3>To Do</h3>
+        <div class="task-list" id="todo"></div>
+      </div>
+      <div class="column" data-status="inprogress">
+        <h3>In Progress</h3>
+        <div class="task-list" id="inprogress"></div>
+      </div>
+      <div class="column" data-status="done">
+        <h3>Done</h3>
+        <div class="task-list" id="done"></div>
+      </div>
+    </main>
+
+    <!-- Calendar -->
+    <div class="calendar hidden" id="calendarView">
+      <div class="calendar-header">
+        <button onclick="prevMonth()">◀</button>
+        <h3 id="calendarTitle"></h3>
+        <button onclick="nextMonth()">▶</button>
+      </div>
+      <div class="calendar-grid" id="calendarGrid"></div>
+    </div>
+
+    <!-- Vault -->
+    <div class="vault hidden" id="vaultView">
+      <h2>Password Vault</h2>
+      <div class="vault-controls">
+        <input type="text" id="vaultName" placeholder="Account name">
+        <input type="text" id="vaultUser" placeholder="Username">
+        <input type="password" id="vaultPass" placeholder="Password">
+        <button onclick="addVaultEntry()">Add</button>
+      </div>
+      <table class="vault-table">
+        <thead>
+          <tr><th>Account</th><th>Username</th><th>Password</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="vaultTable"></tbody>
+      </table>
+    </div>
+
+    <!-- Budget -->
+    <div class="budget hidden" id="budgetView">
+      <iframe src="budget.html" frameborder="0"></iframe>
+    </div>
+  </div>
+
+  <!-- Task Modal -->
+  <div class="modal hidden" id="taskModal">
+    <div class="modal-content">
+      <h3>New Task</h3>
+      <input type="text" id="taskTitle" placeholder="Task title">
+      <textarea id="taskDesc" placeholder="Description"></textarea>
+      <label>Due Date: <input type="date" id="taskDate"></label>
+      <label>Priority:
+        <select id="taskPriority">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+        </select>
+      </label>
+      <button onclick="saveTask()">Save</button>
+      <button onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
