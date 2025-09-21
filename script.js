@@ -1,8 +1,8 @@
 /* script.js - Kanban + Calendar + Vault + Budget messaging
-   - Fixed drag & drop (uses dataTransfer)
-   - Two-way Kanban <-> Calendar sync
-   - Unscheduled tasks shown in calendar view
-   - Improved theme + iframe messaging for budget
+   - Robust drag & drop using dataTransfer
+   - Kanban <-> Calendar sync
+   - Unscheduled tasks appear in Calendar
+   - Theme + iframe messaging
 */
 
 /* -------------------- App State -------------------- */
@@ -123,7 +123,6 @@ function renderTasks() {
       div.draggable = true;
       div.dataset.id = t.id;
 
-      // border-left color by status
       div.style.borderLeft = "6px solid " +
         (t.status === "todo" ? "#9CA3AF" : t.status === "inprogress" ? "#f59e0b" : "#10b981");
 
@@ -136,69 +135,101 @@ function renderTasks() {
         </div>
       `;
 
-      // open full edit modal on dblclick
-      div.addEventListener("dblclick", () => {
-        openModal(null, t.id);
-      });
+      // full edit modal on dblclick
+      div.addEventListener("dblclick", () => openModal(null, t.id));
 
       addDragEvents(div);
-      container.appendChild(div);
+      container.querySelector('.task-list') ? container.querySelector('.task-list').appendChild(div) : container.appendChild(div);
+
+      // ensure element is inside the .task-list node (we keep original structure)
+      const list = container.querySelector('.task-list') || container;
+      if (list && list !== div.parentElement) list.appendChild(div);
     });
   });
+
+  // ensure drop targets are bound (in case DOM changed)
+  setupColumnDrop();
 }
 
-/* drag helpers */
+/* drag helpers (robust across browsers) */
 function addDragEvents(el) {
   el.addEventListener("dragstart", e => {
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", el.dataset.id);
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(el.dataset.id));
+    } catch (err) {
+      // some browsers may restrict setData during certain contexts — we still keep a fallback
+    }
     el.classList.add("dragging");
   });
+
   el.addEventListener("dragend", e => {
     e.target.classList.remove("dragging");
+    // cleanup any visual drop hints
+    document.querySelectorAll('.task-list, .column').forEach(node => node.classList.remove('drag-over'));
   });
+
+  // keyboard accessibility: space/enter to pick up or toggle status quick (optional)
 }
 
-/* attach droppable behavior to columns (robust) */
+/* attach droppable behavior to columns and their inner lists */
 function setupColumnDrop() {
-  document.querySelectorAll(".task-list").forEach(list => {
-    list.addEventListener("dragover", e => {
+  const lists = Array.from(document.querySelectorAll(".task-list"));
+  const columns = Array.from(document.querySelectorAll(".column"));
+
+  const addHandlers = (node) => {
+    node.addEventListener("dragover", e => {
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
-      list.classList.add("drag-over");
+      node.classList.add("drag-over");
     });
 
-    list.addEventListener("dragleave", e => {
-      list.classList.remove("drag-over");
+    node.addEventListener("dragleave", e => {
+      node.classList.remove("drag-over");
     });
 
-    list.addEventListener("drop", e => {
+    node.addEventListener("drop", e => {
       e.preventDefault();
-      list.classList.remove("drag-over");
+      node.classList.remove("drag-over");
 
-      // prefer dataTransfer id (reliable)
+      // prefer dataTransfer id
       let idStr = null;
       try { idStr = e.dataTransfer.getData("text/plain"); } catch (err) { idStr = null; }
       let id = idStr ? parseInt(idStr, 10) : null;
 
-      // fallback: find .dragging element in DOM
+      // fallback to .dragging element
       if (!id) {
         const dragging = document.querySelector(".dragging");
         if (dragging) id = parseInt(dragging.dataset.id, 10);
       }
-
       if (!id) return;
+
+      // Determine target status: if dropped on .task-list use its id, else if dropped on .column use the column's task-list id
+      let targetStatus = null;
+      if (node.classList.contains('task-list')) {
+        targetStatus = node.id;
+      } else {
+        // if column, find its inner .task-list child
+        const tl = node.querySelector('.task-list');
+        if (tl && tl.id) targetStatus = tl.id;
+        // fallback: if column has data-status attribute
+        if (!targetStatus && node.dataset && node.dataset.status) targetStatus = node.dataset.status;
+      }
+      if (!targetStatus) return;
 
       const task = tasks.find(x => x.id === id);
       if (!task) return;
 
-      const newStatus = list.id;
-      task.status = newStatus;
+      task.status = targetStatus;
       saveTasksToLocal();
       renderTasks();
       renderCalendar();
     });
-  });
+  };
+
+  // attach to lists and columns
+  lists.forEach(addHandlers);
+  columns.forEach(addHandlers);
 }
 
 /* -------------------- Calendar -------------------- */
@@ -209,7 +240,7 @@ function renderCalendar() {
   const title = document.getElementById("calendarTitle");
   title.textContent = `${new Date(currentYear, currentMonth).toLocaleString("default", { month: "long" })} ${currentYear}`;
 
-  // render unscheduled tasks (no dueDate)
+  // unscheduled tasks
   const unscheduled = document.getElementById("unscheduledList");
   unscheduled.innerHTML = "";
   const uns = tasks.filter(t => !t.dueDate);
@@ -219,7 +250,7 @@ function renderCalendar() {
     uns.forEach(t => {
       const el = document.createElement("div");
       el.className = "unscheduled-item";
-      el.innerHTML = `<strong>${escapeHtml(t.title)}</strong> <div class="muted">${t.priority.toUpperCase()}</div>`;
+      el.innerHTML = `<strong>${escapeHtml(t.title)}</strong> <div class="muted small-badge">${t.priority.toUpperCase()}</div>`;
       el.addEventListener("click", () => openModal(null, t.id));
       unscheduled.appendChild(el);
     });
@@ -228,7 +259,6 @@ function renderCalendar() {
   const firstDay = new Date(currentYear, currentMonth, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-  // blanks
   for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement("div"));
 
   for (let d = 1; d <= daysInMonth; d++) {
@@ -253,7 +283,7 @@ function renderCalendar() {
       b.textContent = t.title.length > 22 ? t.title.slice(0, 19) + "..." : t.title;
       b.addEventListener("click", ev => {
         ev.stopPropagation();
-        openModal(null, t.id); // full edit on click
+        openModal(null, t.id); // full edit
       });
       dayCell.appendChild(b);
     });
@@ -311,7 +341,6 @@ function showBudget() {
   document.getElementById("vaultView").style.display = "none";
   document.getElementById("budgetView").style.display = "block";
   document.getElementById("viewTitle").textContent = "Budget Tracker";
-  // refresh iframe so it can pick up imported data
   const iframe = document.getElementById("budgetIframe");
   try { iframe.contentWindow.location.reload(); } catch (e) {}
 }
@@ -359,9 +388,7 @@ function vaultView(id) {
   const show = confirm(`Account: ${found.site}\nUser: ${found.username}\n\nShow password?`);
   if (show) {
     alert(`Password: ${found.password}`);
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(found.password).catch(() => {});
-    }
+    if (navigator.clipboard) navigator.clipboard.writeText(found.password).catch(()=>{});
   }
 }
 
@@ -372,12 +399,10 @@ function vaultDelete(id) {
   renderVaultTable();
 }
 
-/* -------------------- Combined Export / Import (with iframe messaging) -------------------- */
+/* -------------------- Export / Import (with iframe messaging) -------------------- */
 function exportJSON() {
-  // Request budget data from iframe; if no response in X ms fallback to parent storage
   const iframe = document.getElementById("budgetIframe");
   const timeout = setTimeout(() => {
-    // fallback
     const rawParent = localStorage.getItem("budgetData_v2");
     const budgetData = rawParent ? JSON.parse(rawParent) : null;
     finalizeExport(budgetData);
@@ -394,7 +419,6 @@ function exportJSON() {
     downloadObjectAsJson(payload, `kanban-backup-${(new Date()).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`);
   }
 
-  // Listen for response just once
   function handleMessage(ev) {
     if (!ev.data || ev.data.type !== "budgetDataResponse") return;
     window.removeEventListener("message", handleMessage);
@@ -402,16 +426,9 @@ function exportJSON() {
   }
   window.addEventListener("message", handleMessage);
 
-  // Ask iframe
   try {
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ type: "requestBudget" }, "*");
-    } else {
-      // no iframe available, fallback will trigger
-    }
-  } catch (err) {
-    // fallback
-  }
+    if (iframe && iframe.contentWindow) iframe.contentWindow.postMessage({ type: "requestBudget" }, "*");
+  } catch (err) {}
 }
 
 function importJSON() {
@@ -425,19 +442,12 @@ function importJSON() {
     reader.onload = ev => {
       try {
         const parsed = JSON.parse(ev.target.result);
-        if (parsed.tasks && Array.isArray(parsed.tasks)) {
-          tasks = parsed.tasks;
-          saveTasksToLocal();
-        }
-        if (parsed.vault && Array.isArray(parsed.vault)) {
-          vaultEntries = parsed.vault;
-          saveVaultToLocal();
-        }
+        if (parsed.tasks && Array.isArray(parsed.tasks)) { tasks = parsed.tasks; saveTasksToLocal(); }
+        if (parsed.vault && Array.isArray(parsed.vault)) { vaultEntries = parsed.vault; saveVaultToLocal(); }
         if (parsed.budget) {
           const iframe = document.getElementById("budgetIframe");
           try {
             if (iframe && iframe.contentWindow) {
-              // send import message to iframe
               iframe.contentWindow.postMessage({ type: "importBudget", payload: parsed.budget }, "*");
             } else {
               localStorage.setItem("budgetData_v2", JSON.stringify(parsed.budget));
@@ -490,11 +500,10 @@ function initTheme() {
       localStorage.setItem("myboard_theme", "dark");
     }
 
-    // send theme to budget iframe
     const iframe = document.getElementById("budgetIframe");
     try {
       if (iframe && iframe.contentWindow) {
-        iframe.contentWindow.postMessage({ type: "setTheme", payload: document.body.classList.contains("light") ? "light" : "dark" }, "*");
+        iframe.contentWindow.postMessage({ type: "setTheme", payload: document.body.classList.contains('light') ? 'light' : 'dark' }, "*");
       }
     } catch(e){}
   });
@@ -502,19 +511,15 @@ function initTheme() {
 
 /* -------------------- Initialization -------------------- */
 (function init() {
-  // wire calendar nav buttons
+  // wire calendar nav
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
   if (prevBtn) prevBtn.addEventListener("click", prevMonth);
   if (nextBtn) nextBtn.addEventListener("click", nextMonth);
 
-  // modal close by backdrop
+  // modal backdrop
   const modal = document.getElementById("taskModal");
-  if (modal) {
-    modal.addEventListener("click", e => {
-      if (e.target.id === "taskModal") closeModal();
-    });
-  }
+  if (modal) modal.addEventListener("click", e => { if (e.target.id === "taskModal") closeModal(); });
 
   // modal save button
   const saveBtn = document.getElementById("saveTaskBtn");
@@ -532,15 +537,13 @@ function initTheme() {
   // theme
   initTheme();
 
-  // handle messages from iframe (budget)
+  // messages from iframe
   window.addEventListener("message", ev => {
-    // accept messages from iframe (no origin check here; add if needed)
     const { data } = ev;
     if (!data || !data.type) return;
     if (data.type === "budgetDataResponse") {
-      // handled in export flow via temporary listener
+      // handled by export listener
     } else if (data.type === "importBudgetAck") {
-      // optional ack from iframe
       console.info("Budget iframe imported data");
     }
   });
