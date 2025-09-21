@@ -6,6 +6,7 @@
   --card: #ffffff;
   --accent: #2563eb;
   --high-contrast-text: #0b1220;
+  --muted-light: #cbd5e1; /* readable desaturated light color for dark mode */
 }
 
 /* Light and dark theme classes set on body */
@@ -25,6 +26,7 @@ body.dark {
   --muted: #9aa3b2;
   --card: #0f1724;
   --high-contrast-text: #e6eef9;
+  --muted-light: #cbd5e1;
   color: var(--high-contrast-text);
 }
 
@@ -39,38 +41,17 @@ body {
 }
 
 /* Sidebar */
-.sidebar {
-  width:220px;
-  background: var(--sidebar);
-  color: var(--sidebar-text);
-  padding:1rem;
-  display:flex;
-  flex-direction:column;
-  gap:0.75rem;
-  transition: transform 0.2s ease;
-}
+.sidebar { width:220px; background: var(--sidebar); color: var(--sidebar-text); padding:1rem; display:flex; flex-direction:column; gap:0.75rem; transition: transform 0.2s ease; }
 .sidebar.collapsed { transform: translateX(-100%); position: fixed; z-index: 30; left: 0; top: 0; height: 100vh; }
 .brand { display:flex; align-items:center; gap:0.6rem; justify-content:space-between; }
 .brand h1 { font-size:1.2rem; margin:0; color:var(--sidebar-text); }
 
-/* Buttons in sidebar */
+/* Buttons */
 .side-actions { display:flex; flex-direction:column; gap:0.45rem; }
-.sidebar button, .side-nav button {
-  background: transparent;
-  color: var(--sidebar-text);
-  border: 1px solid rgba(255,255,255,0.03);
-  padding: 0.5rem;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align:left;
-}
+.sidebar button, .side-nav button { background: transparent; color: var(--sidebar-text); border: 1px solid rgba(255,255,255,0.03); padding: 0.5rem; border-radius: 6px; cursor: pointer; text-align:left; }
 
 /* Theme emoji button */
-.theme-emoji {
-  width: 38px; height: 38px; border-radius: 50%;
-  display:inline-flex; align-items:center; justify-content:center;
-  background: rgba(255,255,255,0.04); color: inherit; border:none; cursor:pointer; font-size:18px;
-}
+.theme-emoji { width: 38px; height: 38px; border-radius: 50%; display:inline-flex; align-items:center; justify-content:center; background: rgba(255,255,255,0.04); color: inherit; border:none; cursor:pointer; font-size:18px; }
 .theme-emoji.rotate { animation: spin 0.45s linear; }
 @keyframes spin { from{ transform: rotate(0deg);} to{ transform: rotate(360deg);} }
 
@@ -88,15 +69,15 @@ body {
 .column h3 { margin:0; color:var(--high-contrast-text); font-weight:700; }
 .task-list { display:flex; flex-direction:column; gap:0.5rem; }
 
-/* Task card (higher contrast, readable) */
+/* Task card (high contrast in dark mode) */
 .task {
   background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02));
   border-radius:8px; padding:0.6rem; box-shadow:0 6px 18px rgba(0,0,0,0.06);
   border-left:6px solid #ccc; cursor:grab; color:var(--high-contrast-text);
 }
 .task h4 { font-size:0.95rem; margin-bottom:0.25rem; color:var(--high-contrast-text); }
-.task .desc { font-size:0.85rem; color:var(--muted); margin-bottom:0.25rem; }
-.task .meta { display:flex; justify-content:space-between; font-size:0.75rem; color:var(--muted); }
+.task .desc { font-size:0.85rem; color: var(--muted-light); margin-bottom:0.25rem; } /* readable light gray in dark mode */
+.task .meta { display:flex; justify-content:space-between; font-size:0.75rem; color:var(--muted-light); }
 
 /* Priority badges */
 .priority { padding:2px 6px; border-radius:4px; font-weight:700; color:#fff; font-size:0.7rem; }
@@ -143,7 +124,7 @@ body {
 button.ghost { background:transparent; border:1px solid rgba(0,0,0,0.06); }
 
 /* Drag over style */
-.task-list .drag-over { outline: 2px dashed rgba(37,99,235,0.4); }
+.task-list .drag-over, .column.drag-over { outline: 2px dashed rgba(37,99,235,0.4); }
 
 /* Responsive */
 @media (max-width:900px) {
