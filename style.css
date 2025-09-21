@@ -6,7 +6,7 @@
   --card: #ffffff;
   --accent: #2563eb;
   --high-contrast-text: #0b1220;
-  --muted-light: #cbd5e1; /* readable desaturated light color for dark mode */
+  --muted-light: #cbd5e1;
 }
 
 /* Light and dark theme classes set on body */
@@ -76,7 +76,7 @@ body {
   border-left:6px solid #ccc; cursor:grab; color:var(--high-contrast-text);
 }
 .task h4 { font-size:0.95rem; margin-bottom:0.25rem; color:var(--high-contrast-text); }
-.task .desc { font-size:0.85rem; color: var(--muted-light); margin-bottom:0.25rem; } /* readable light gray in dark mode */
+.task .desc { font-size:0.85rem; color: green; margin-bottom:0.25rem; }
 .task .meta { display:flex; justify-content:space-between; font-size:0.75rem; color:var(--muted-light); }
 
 /* Priority badges */
@@ -91,7 +91,7 @@ body {
 .calendar-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:0.4rem; }
 .day { min-height:96px; background:var(--card); border-radius:8px; padding:0.45rem; border:1px solid rgba(0,0,0,0.04); display:flex; flex-direction:column; gap:6px; cursor:pointer; color:var(--high-contrast-text); }
 .day.today { box-shadow:0 0 0 3px rgba(37,99,235,0.12); }
-.day-task { font-size:0.78rem; padding:2px 6px; border-radius:4px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.day-task { font-size:0.78rem; padding:6px 8px; border-radius:6px; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; box-shadow:0 2px 6px rgba(0,0,0,0.12); }
 .day-task.low { background: linear-gradient(135deg,#34d399,#10b981); }
 .day-task.medium { background: linear-gradient(135deg,#fbbf24,#f59e0b); }
 .day-task.high { background: linear-gradient(135deg,#f87171,#ef4444); }
