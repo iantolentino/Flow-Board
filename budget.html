@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Budget Tracker — Local JSON + Excel Export</title>
+
+  <!-- ExcelJS, FileSaver, Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root {
+      --bg-dark: #101014;
+      --card-dark: rgba(255,255,255,0.03);
+      --text-dark: #eaeaea;
+      --muted-dark: #999;
+      --accent: #2680eb;
+    }
+    body {
+      margin: 0;
+      font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
+      background: linear-gradient(135deg,var(--bg-dark), #0b0b0d);
+      color: var(--text-dark);
+      padding: 18px;
+      -webkit-font-smoothing:antialiased;
+    }
+    body.light {
+      background: #f4f6f9;
+      color: #1b1b1b;
+    }
+    .app {
+      max-width: 960px;
+      margin: 0 auto;
+      background: var(--card-dark);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+    }
+    h1 { margin: 0 0 6px 0; font-size: 1.4rem; }
+    .controls { display:flex; gap:8px; justify-content:flex-end; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+    input[type="number"], input[type="date"], select { padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:rgba(255,255,255,0.02); color:inherit; }
+    button { background:var(--accent); color:white; border:none; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:600; }
+    button.ghost { background:transparent; border:1px solid rgba(255,255,255,0.06); color:inherit; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; }
+    .form-row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+    .summary { display:flex; gap:12px; flex-wrap:wrap; margin-top:12px; }
+    .card { background: rgba(255,255,255,0.02); padding:12px; border-radius:10px; min-width:160px; color:inherit; }
+    table { width:100%; border-collapse:collapse; margin-top:12px; background:transparent; color:inherit; }
+    th, td { text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,0.04); font-variant-numeric:tabular-nums; }
+    .actions button { margin-right:6px; padding:6px 8px; font-size:12px; }
+    @media (max-width:700px) {
+      .form-row { flex-direction:column; align-items:stretch; }
+      table { display:none; }
+      .mobile-list .entry-card { background: rgba(255,255,255,0.02); padding:10px; margin-bottom:10px; border-radius:8px; }
+    }
+    /* Light mode tweaks */
+    body.light input, body.light select { border:1px solid #ddd; background:white; color:inherit; }
+    body.light .card { background: #fff; color: #111; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+    .muted { color: var(--muted-dark); font-size:0.92rem; }
+  </style>
+</head>
+<body>
+  <div class="app" role="main" aria-label="Budget tracker">
+    <div class="topbar">
+      <div>
+        <h1>Budget Tracker</h1>
+        <div class="muted">Local JSON backup / import • Excel export with chart • Edit rows</div>
+      </div>
+
+      <div class="controls" aria-hidden="false">
+        <label for="currency">Currency</label>
+        <select id="currency" aria-label="Currency selector">
+          <option value="₱">₱ Peso</option>
+          <option value="$">$ Dollar</option>
+          <option value="€">€ Euro</option>
+          <option value="¥">¥ Yen</option>
+        </select>
+
+        <button id="toggleTheme" class="ghost" title="Toggle theme">Toggle Theme</button>
+        <button id="exportJsonBtn" class="">Export JSON</button>
+        <input id="importJsonFile" type="file" accept=".json" style="display:none" />
+        <button id="importJsonBtn" class="ghost">Import JSON</button>
+        <button id="exportExcelBtn">Export Excel</button>
+      </div>
+    </div>
+
+    <!-- total money -->
+    <div class="form-row" aria-label="Total money">
+      <label for="totalMoneyInput" class="muted">Total Money (separate)</label>
+      <input id="totalMoneyInput" type="number" placeholder="Enter total money" step="0.01" aria-label="Total money input" />
+      <button id="setTotalBtn">Set Total</button>
+      <div class="muted" style="margin-left:8px;">(saved to JSON/localStorage)</div>
+    </div>
+
+    <!-- add entry -->
+    <div class="form-row" aria-label="Add entry">
+      <input id="entryDate" type="date" aria-label="Entry date" />
+      <select id="entryType" aria-label="Entry type">
+        <option value="Expense">Expense</option>
+        <option value="Savings">Savings</option>
+      </select>
+      <select id="entryCategory" aria-label="Entry category">
+        <option>Food</option><option>Transport</option><option>Bills</option><option>Leisure</option><option>Other</option>
+      </select>
+      <input id="entryAmount" type="number" placeholder="Amount" step="0.01" aria-label="Entry amount" />
+      <button id="addEntryBtn">Add Entry</button>
+      <button id="clearFormBtn" class="ghost">Clear</button>
+    </div>
+
+    <!-- summary -->
+    <div class="summary" role="region" aria-label="Summary">
+      <div class="card"><div class="muted">Total Money</div><div id="uiTotalMoney">₱0.00</div></div>
+      <div class="card"><div class="muted">Expenses</div><div id="uiExpenses">₱0.00</div></div>
+      <div class="card"><div class="muted">Savings</div><div id="uiSavings">₱0.00</div></div>
+      <div class="card"><div class="muted">Remaining</div><div id="uiRemaining">₱0.00</div></div>
+    </div>
+
+    <!-- table (hidden on small screens) -->
+    <table id="entriesTable" role="table" aria-label="Budget entries table">
+      <thead>
+        <tr><th>Date</th><th>Type</th><th>Category</th><th>Amount</th><th>Actions</th></tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+
+    <!-- mobile list -->
+    <div id="mobileList" class="mobile-list" aria-hidden="true"></div>
+
+    <div style="margin-top:14px; font-size:13px; color:rgba(255,255,255,0.6)">
+      Tip: use Export JSON to copy the backup file to another computer, then Import JSON there to restore.
+    </div>
+  </div>
+
+<script>
+(() => {
+  // DOM
+  const currencyEl = document.getElementById('currency');
+  const toggleThemeBtn = document.getElementById('toggleTheme');
+  const totalMoneyInput = document.getElementById('totalMoneyInput');
+  const setTotalBtn = document.getElementById('setTotalBtn');
+  const entryDate = document.getElementById('entryDate');
+  const entryType = document.getElementById('entryType');
+  const entryCategory = document.getElementById('entryCategory');
+  const entryAmount = document.getElementById('entryAmount');
+  const addEntryBtn = document.getElementById('addEntryBtn');
+  const clearFormBtn = document.getElementById('clearFormBtn');
+  const exportJsonBtn = document.getElementById('exportJsonBtn');
+  const importJsonBtn = document.getElementById('importJsonBtn');
+  const importJsonFile = document.getElementById('importJsonFile');
+  const exportExcelBtn = document.getElementById('exportExcelBtn');
+
+  const tableBody = document.getElementById('tableBody');
+  const mobileList = document.getElementById('mobileList');
+  const entriesTable = document.getElementById('entriesTable');
+
+  const uiTotalMoney = document.getElementById('uiTotalMoney');
+  const uiExpenses = document.getElementById('uiExpenses');
+  const uiSavings = document.getElementById('uiSavings');
+  const uiRemaining = document.getElementById('uiRemaining');
+
+  // Data model
+  let budgetData = { totalMoney: 0, entries: [] };
+  const STORAGE_KEY = 'budgetData_v2';
+
+  function safeNumber(v){ const n = parseFloat(v); return isNaN(n) ? 0 : n; }
+  function formatCurrency(v){ return (currencyEl.value || '₱') + safeNumber(v).toFixed(2); }
+
+  function normalizeLoaded(raw) {
+    if (raw === null || raw === undefined) return { totalMoney: 0, entries: [] };
+    if (Array.isArray(raw)) return { totalMoney: 0, entries: raw.map(fixEntry) };
+    if (typeof raw === 'object') {
+      let totalMoney = raw.totalMoney !== undefined ? safeNumber(raw.totalMoney) : 0;
+      let entries = [];
+      if (Array.isArray(raw.entries)) entries = raw.entries.map(fixEntry);
+      else if (Array.isArray(raw.data)) entries = raw.data.map(fixEntry);
+      else if (Array.isArray(raw.items)) entries = raw.items.map(fixEntry);
+      else {
+        for (const k of Object.keys(raw)) {
+          if (Array.isArray(raw[k])) { entries = raw[k].map(fixEntry); break; }
+        }
+      }
+      return { totalMoney, entries };
+    }
+    return { totalMoney: 0, entries: [] };
+  }
+
+  function fixEntry(e){
+    return {
+      date: e && e.date ? String(e.date) : (new Date()).toISOString().slice(0,10),
+      type: e && (e.type === 'Savings' || e.type === 'Expense') ? e.type : (e && e.type ? String(e.type) : 'Expense'),
+      category: e && e.category ? String(e.category) : 'Other',
+      amount: safeNumber(e && (e.amount ?? e.value ?? e.amt))
+    };
+  }
+
+  function loadFromStorage(){
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) { budgetData = { totalMoney: 0, entries: [] }; return; }
+    try {
+      const parsed = JSON.parse(raw);
+      budgetData = normalizeLoaded(parsed);
+    } catch (err) {
+      console.warn('Failed to parse stored data, resetting.', err);
+      budgetData = { totalMoney: 0, entries: [] };
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+  function saveToStorage(){
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(budgetData));
+    } catch(e){
+      console.error('Failed to save to storage', e);
+      alert('Failed to save data locally. Check browser storage settings.');
+    }
+  }
+
+  function computeTotals(){
+    let expenses = 0, savings = 0;
+    for(const e of budgetData.entries){
+      if (e.type === 'Expense') expenses += safeNumber(e.amount);
+      else savings += safeNumber(e.amount);
+    }
+    const remaining = safeNumber(budgetData.totalMoney) - expenses - savings;
+    return { expenses, savings, remaining };
+  }
+
+  function renderTable(){
+    const totals = computeTotals();
+    uiTotalMoney.textContent = formatCurrency(budgetData.totalMoney);
+    uiExpenses.textContent = formatCurrency(totals.expenses);
+    uiSavings.textContent = formatCurrency(totals.savings);
+    uiRemaining.textContent = formatCurrency(totals.remaining);
+
+    tableBody.innerHTML = '';
+    budgetData.entries.forEach((e, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${e.date}</td>
+        <td>${e.type}</td>
+        <td>${e.category}</td>
+        <td>${formatCurrency(e.amount)}</td>
+        <td class="actions">
+          <button onclick="BT_edit(${idx})" aria-label="Edit entry ${idx}">Edit</button>
+          <button onclick="BT_delete(${idx})" aria-label="Delete entry ${idx}">Delete</button>
+        </td>`;
+      tableBody.appendChild(tr);
+    });
+
+    mobileList.innerHTML = '';
+    if (window.innerWidth <= 700) {
+      mobileList.style.display = 'block';
+      entriesTable.style.display = 'none';
+      budgetData.entries.forEach((e, idx) => {
+        const d = document.createElement('div');
+        d.className = 'entry-card';
+        d.innerHTML = `<div style="display:flex;justify-content:space-between"><strong>${e.date}</strong><span>${formatCurrency(e.amount)}</span></div>
+          <div>${e.type} • ${e.category}</div>
+          <div style="margin-top:8px">
+            <button onclick="BT_edit(${idx})">Edit</button>
+            <button onclick="BT_delete(${idx})">Delete</button>
+          </div>`;
+        mobileList.appendChild(d);
+      });
+    } else {
+      mobileList.style.display = 'none';
+      entriesTable.style.display = '';
+    }
+  }
+
+  function setTotalMoney(){
+    const v = safeNumber(totalMoneyInput.value);
+    budgetData.totalMoney = v;
+    saveToStorage();
+    renderTable();
+    totalMoneyInput.value = '';
+  }
+
+  function addEntry(){
+    const date = entryDate.value || (new Date()).toISOString().slice(0,10);
+    const type = entryType.value;
+    const category = entryCategory.value;
+    const amount = safeNumber(entryAmount.value);
+    if (amount <= 0) { alert('Enter an amount greater than 0'); return; }
+    const entry = { date, type, category, amount };
+    if (!Array.isArray(budgetData.entries)) budgetData.entries = [];
+    budgetData.entries.push(entry);
+    saveToStorage();
+    renderTable();
+    entryAmount.value = '';
+    entryDate.value = '';
+  }
+
+  function clearForm(){
+    entryDate.value = '';
+    entryAmount.value = '';
+    entryCategory.value = 'Food';
+    entryType.value = 'Expense';
+  }
+
+  function deleteEntry(index){
+    if (!confirm('Delete this entry?')) return;
+    budgetData.entries.splice(index, 1);
+    saveToStorage();
+    renderTable();
+  }
+
+  function editEntry(index){
+    const e = budgetData.entries[index];
+    if (!e) return;
+    entryDate.value = e.date;
+    entryType.value = e.type;
+    entryCategory.value = e.category;
+    entryAmount.value = e.amount;
+    budgetData.entries.splice(index, 1);
+    saveToStorage();
+    renderTable();
+    entryAmount.focus();
+  }
+
+  window.BT_delete = deleteEntry;
+  window.BT_edit = editEntry;
+
+  function exportJSONLocal(){
+    try {
+      const blob = new Blob([JSON.stringify(budgetData, null, 2)], { type: 'application/json' });
+      saveAs(blob, `budget-backup-${(new Date()).toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`);
+    } catch (e) {
+      console.error(e);
+      alert('Failed to export JSON: ' + (e.message || e));
+    }
+  }
+
+  function handleImportFile(e){
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        const normalized = normalizeLoaded(parsed);
+        budgetData = normalized;
+        saveToStorage();
+        renderTable();
+        alert('Imported successfully.');
+      } catch (err) {
+        console.error(err);
+        alert('Invalid JSON file.');
+      } finally {
+        importJsonFile.value = '';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  async function exportExcel(){
+    if (!Array.isArray(budgetData.entries) || budgetData.entries.length === 0) {
+      if (!confirm('No entries to export. Export summary with zero entries?')) return;
+    }
+    const totals = computeTotals();
+    const categories = {};
+    for (const e of budgetData.entries) {
+      if (!categories[e.category]) categories[e.category] = { expenses: 0, savings: 0 };
+      if (e.type === 'Expense') categories[e.category].expenses += safeNumber(e.amount);
+      else categories[e.category].savings += safeNumber(e.amount);
+    }
+
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const wsEntries = workbook.addWorksheet('Entries');
+      wsEntries.addRow(['Date','Type','Category','Amount']);
+      for (const e of budgetData.entries) wsEntries.addRow([e.date, e.type, e.category, safeNumber(e.amount)]);
+      wsEntries.columns = [{width:15},{width:12},{width:18},{width:12}];
+      [2,3,4].forEach(cn => { wsEntries.getColumn(cn).numFmt = '#,##0.00'; });
+
+      const wsSummary = workbook.addWorksheet('Summary');
+      wsSummary.addRow(['Total Money', safeNumber(budgetData.totalMoney)]);
+      wsSummary.addRow(['Total Expenses', totals.expenses]);
+      wsSummary.addRow(['Total Savings', totals.savings]);
+      wsSummary.addRow(['Remaining', totals.remaining]);
+
+      const wsByCat = workbook.addWorksheet('By Category');
+      wsByCat.addRow(['Category','Expenses','Savings']);
+      for (const cat of Object.keys(categories)) wsByCat.addRow([cat, categories[cat].expenses, categories[cat].savings]);
+      wsByCat.columns = [{width:20},{width:12},{width:12}];
+
+      const canvas = document.createElement('canvas'); canvas.width = 600; canvas.height = 400;
+      const ctx = canvas.getContext('2d');
+      const chart = new Chart(ctx, {
+        type: 'pie',
+        data: { labels: ['Expenses','Savings','Remaining'], datasets: [{ data: [totals.expenses, totals.savings, totals.remaining], backgroundColor:['#ff4c4c','#4caf50','#2196f3'], borderColor:'#111', borderWidth:1 }] },
+        options: { plugins: { title: { display: true, text: 'Budget Distribution', color: (document.body.classList.contains('light') ? '#111' : '#fff') }, legend: { display:true, position:'bottom', labels:{ color:(document.body.classList.contains('light') ? '#111' : '#fff') } } }, animation:false, responsive:false, maintainAspectRatio:false }
+      });
+
+      await new Promise(r => setTimeout(r, 300));
+      const base64 = canvas.toDataURL('image/png').split(',')[1];
+      const imageId = workbook.addImage({ base64, extension: 'png' });
+      wsSummary.addImage(imageId, { tl: { col: 3, row: 0 }, ext: { width: 450, height: 300 } });
+
+      const note = (totals.expenses > totals.savings) ? 'Recommendation: Expenses exceed savings — consider decreasing expenses.' : 'Good: Savings are greater than expenses.';
+      wsSummary.addRow([]); wsSummary.addRow(['Note', note]);
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      saveAs(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'budget-report.xlsx');
+
+      chart.destroy();
+    } catch (err) {
+      console.error('Excel export failed', err);
+      alert('Excel export failed: ' + (err.message || err));
+    }
+  }
+
+  // handle inbound postMessage from parent
+  window.addEventListener('message', ev => {
+    if (!ev.data || !ev.data.type) return;
+    try {
+      if (ev.data.type === 'requestBudget') {
+        // reply with current budget data
+        loadFromStorage();
+        ev.source.postMessage({ type: 'budgetDataResponse', payload: budgetData }, '*');
+      } else if (ev.data.type === 'importBudget') {
+        // import provided payload
+        const normalized = normalizeLoaded(ev.data.payload);
+        budgetData = normalized;
+        saveToStorage();
+        renderTable();
+        // ack parent
+        ev.source.postMessage({ type: 'importBudgetAck' }, '*');
+      } else if (ev.data.type === 'setTheme') {
+        if (ev.data.payload === 'light') document.body.classList.add('light'); else document.body.classList.remove('light');
+      }
+    } catch (err) {
+      console.error('Message handling error', err);
+    }
+  });
+
+  // init
+  function init(){
+    loadFromStorage();
+    const savedCurrency = localStorage.getItem('bt_currency');
+    if (savedCurrency) currencyEl.value = savedCurrency;
+    currencyEl.addEventListener('change', () => { localStorage.setItem('bt_currency', currencyEl.value); renderTable(); });
+
+    if (localStorage.getItem('bt_theme') === 'light') document.body.classList.add('light');
+    toggleThemeBtn.addEventListener('click', () => {
+      document.body.classList.toggle('light');
+      localStorage.setItem('bt_theme', document.body.classList.contains('light') ? 'light' : 'dark');
+    });
+
+    setTotalBtn.addEventListener('click', setTotalMoney);
+    addEntryBtn.addEventListener('click', addEntry);
+    clearFormBtn.addEventListener('click', clearForm);
+    exportJsonBtn.addEventListener('click', exportJSONLocal);
+    importJsonBtn.addEventListener('click', () => importJsonFile.click());
+    importJsonFile.addEventListener('change', handleImportFile);
+    exportExcelBtn.addEventListener('click', exportExcel);
+
+    renderTable();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
