@@ -1,4 +1,9 @@
-/* script.js - complete */
+/* script.js - Kanban + Calendar + Vault + Budget messaging
+   - Fixed drag & drop (uses dataTransfer)
+   - Two-way Kanban <-> Calendar sync
+   - Unscheduled tasks shown in calendar view
+   - Improved theme + iframe messaging for budget
+*/
 
 /* -------------------- App State -------------------- */
 let tasks = JSON.parse(localStorage.getItem("kanbanTasks")) || [];
@@ -6,6 +11,7 @@ let vaultEntries = JSON.parse(localStorage.getItem("vault_entries")) || [];
 let currentDate = new Date();
 let currentMonth = currentDate.getMonth();
 let currentYear = currentDate.getFullYear();
+let editingTaskId = null; // null => create mode
 
 /* -------------------- Utilities -------------------- */
 function saveTasksToLocal() {
@@ -37,13 +43,38 @@ function escapeHtml(str) {
 }
 
 /* -------------------- Modal (Add/Edit Task) -------------------- */
-function openModal(date = "") {
+function openModal(date = "", id = null) {
   const modal = document.getElementById("taskModal");
   modal.classList.remove("hidden");
+
   const inputDate = document.getElementById("taskDate");
-  inputDate.value = date || "";
-  setTimeout(() => document.getElementById("taskTitle").focus(), 50);
+  const title = document.getElementById("taskTitle");
+  const desc = document.getElementById("taskDesc");
+  const priority = document.getElementById("taskPriority");
+  const modalTitle = document.getElementById("modalTitle");
+  editingTaskId = null;
+
+  if (id) {
+    const t = tasks.find(x => x.id === id);
+    if (t) {
+      title.value = t.title;
+      desc.value = t.desc || "";
+      inputDate.value = t.dueDate || "";
+      priority.value = t.priority || "medium";
+      modalTitle.textContent = "Edit Task";
+      editingTaskId = id;
+    }
+  } else {
+    modalTitle.textContent = date ? `New Task — ${date}` : "New Task";
+    title.value = "";
+    desc.value = "";
+    inputDate.value = date || "";
+    priority.value = "medium";
+  }
+
+  setTimeout(() => title.focus(), 50);
 }
+
 function closeModal() {
   const modal = document.getElementById("taskModal");
   modal.classList.add("hidden");
@@ -51,6 +82,7 @@ function closeModal() {
   document.getElementById("taskDesc").value = "";
   document.getElementById("taskDate").value = "";
   document.getElementById("taskPriority").value = "medium";
+  editingTaskId = null;
 }
 
 /* -------------------- Kanban (add, render, drag/drop) -------------------- */
@@ -60,8 +92,20 @@ function saveTask() {
   const dueDate = document.getElementById("taskDate").value;
   const priority = document.getElementById("taskPriority").value || "medium";
   if (!title) { alert("Title required"); return; }
-  const t = { id: Date.now(), title, desc, dueDate, priority, status: "todo" };
-  tasks.push(t);
+
+  if (editingTaskId) {
+    const t = tasks.find(x => x.id === editingTaskId);
+    if (t) {
+      t.title = title;
+      t.desc = desc;
+      t.dueDate = dueDate || "";
+      t.priority = priority;
+    }
+  } else {
+    const t = { id: Date.now(), title, desc, dueDate: dueDate || "", priority, status: "todo" };
+    tasks.push(t);
+  }
+
   saveTasksToLocal();
   renderTasks();
   renderCalendar();
@@ -92,15 +136,9 @@ function renderTasks() {
         </div>
       `;
 
-      // edit on dblclick (title)
+      // open full edit modal on dblclick
       div.addEventListener("dblclick", () => {
-        const newTitle = prompt("Edit title", t.title);
-        if (newTitle !== null) {
-          t.title = newTitle.trim() || t.title;
-          saveTasksToLocal();
-          renderTasks();
-          renderCalendar();
-        }
+        openModal(null, t.id);
       });
 
       addDragEvents(div);
@@ -111,34 +149,54 @@ function renderTasks() {
 
 /* drag helpers */
 function addDragEvents(el) {
-  el.addEventListener("dragstart", e => e.target.classList.add("dragging"));
-  el.addEventListener("dragend", e => e.target.classList.remove("dragging"));
+  el.addEventListener("dragstart", e => {
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", el.dataset.id);
+    el.classList.add("dragging");
+  });
+  el.addEventListener("dragend", e => {
+    e.target.classList.remove("dragging");
+  });
 }
 
-/* attach droppable behavior to columns */
+/* attach droppable behavior to columns (robust) */
 function setupColumnDrop() {
   document.querySelectorAll(".task-list").forEach(list => {
     list.addEventListener("dragover", e => {
       e.preventDefault();
-      const dragging = document.querySelector(".dragging");
-      if (dragging && list !== dragging.parentElement) {
-        list.appendChild(dragging);
-      }
+      e.dataTransfer.dropEffect = "move";
+      list.classList.add("drag-over");
     });
+
+    list.addEventListener("dragleave", e => {
+      list.classList.remove("drag-over");
+    });
+
     list.addEventListener("drop", e => {
       e.preventDefault();
-      const dragging = document.querySelector(".dragging");
-      if (dragging) {
-        const id = parseInt(dragging.dataset.id);
-        const status = list.id;
-        const task = tasks.find(x => x.id === id);
-        if (task) {
-          task.status = status;
-          saveTasksToLocal();
-          renderTasks();
-          renderCalendar();
-        }
+      list.classList.remove("drag-over");
+
+      // prefer dataTransfer id (reliable)
+      let idStr = null;
+      try { idStr = e.dataTransfer.getData("text/plain"); } catch (err) { idStr = null; }
+      let id = idStr ? parseInt(idStr, 10) : null;
+
+      // fallback: find .dragging element in DOM
+      if (!id) {
+        const dragging = document.querySelector(".dragging");
+        if (dragging) id = parseInt(dragging.dataset.id, 10);
       }
+
+      if (!id) return;
+
+      const task = tasks.find(x => x.id === id);
+      if (!task) return;
+
+      const newStatus = list.id;
+      task.status = newStatus;
+      saveTasksToLocal();
+      renderTasks();
+      renderCalendar();
     });
   });
 }
@@ -151,58 +209,63 @@ function renderCalendar() {
   const title = document.getElementById("calendarTitle");
   title.textContent = `${new Date(currentYear, currentMonth).toLocaleString("default", { month: "long" })} ${currentYear}`;
 
+  // render unscheduled tasks (no dueDate)
+  const unscheduled = document.getElementById("unscheduledList");
+  unscheduled.innerHTML = "";
+  const uns = tasks.filter(t => !t.dueDate);
+  if (uns.length === 0) {
+    unscheduled.innerHTML = `<div class="muted">No unscheduled tasks</div>`;
+  } else {
+    uns.forEach(t => {
+      const el = document.createElement("div");
+      el.className = "unscheduled-item";
+      el.innerHTML = `<strong>${escapeHtml(t.title)}</strong> <div class="muted">${t.priority.toUpperCase()}</div>`;
+      el.addEventListener("click", () => openModal(null, t.id));
+      unscheduled.appendChild(el);
+    });
+  }
+
   const firstDay = new Date(currentYear, currentMonth, 1).getDay();
   const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
-  // fill blanks
+  // blanks
   for (let i = 0; i < firstDay; i++) grid.appendChild(document.createElement("div"));
 
   for (let d = 1; d <= daysInMonth; d++) {
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const dayCell = document.createElement("div");
     dayCell.className = "day";
+
     const strong = document.createElement("strong");
     strong.textContent = d;
     dayCell.appendChild(strong);
 
-    // highlight today
     const today = new Date();
     if (today.getDate() === d && today.getMonth() === currentMonth && today.getFullYear() === currentYear) {
       dayCell.classList.add("today");
     }
 
-    // tasks on this date
     const dayTasks = tasks.filter(t => t.dueDate === dateStr);
     dayTasks.slice(0, 3).forEach(t => {
       const b = document.createElement("div");
-      // priority class shows gradient color
       b.className = `day-task ${t.priority}`;
-      b.textContent = t.title.length > 20 ? t.title.slice(0, 17) + "..." : t.title;
-      // clicking the mini-task allows quick edit of title
+      b.title = t.title;
+      b.textContent = t.title.length > 22 ? t.title.slice(0, 19) + "..." : t.title;
       b.addEventListener("click", ev => {
         ev.stopPropagation();
-        const newTitle = prompt("Edit task title", t.title);
-        if (newTitle !== null) {
-          t.title = newTitle;
-          saveTasksToLocal();
-          renderTasks();
-          renderCalendar();
-        }
+        openModal(null, t.id); // full edit on click
       });
       dayCell.appendChild(b);
     });
 
     if (dayTasks.length > 3) {
       const more = document.createElement("div");
-      more.style.fontSize = ".75rem";
-      more.style.color = "var(--muted)";
+      more.className = "more-count";
       more.textContent = `+${dayTasks.length - 3} more`;
       dayCell.appendChild(more);
     }
 
-    // click a day to create task on that date
     dayCell.addEventListener("click", () => openModal(dateStr));
-
     grid.appendChild(dayCell);
   }
 }
@@ -248,7 +311,9 @@ function showBudget() {
   document.getElementById("vaultView").style.display = "none";
   document.getElementById("budgetView").style.display = "block";
   document.getElementById("viewTitle").textContent = "Budget Tracker";
-  // nothing else needed here; iframe handles budget UI
+  // refresh iframe so it can pick up imported data
+  const iframe = document.getElementById("budgetIframe");
+  try { iframe.contentWindow.location.reload(); } catch (e) {}
 }
 
 /* -------------------- Vault (add/view/delete/render) -------------------- */
@@ -280,7 +345,6 @@ function renderVaultTable() {
         <button class="delete-btn">Delete</button>
       </td>
     `;
-    // wire up buttons explicitly to avoid inline onclick issues
     const viewBtn = tr.querySelector(".view-btn");
     viewBtn.addEventListener("click", () => vaultView(e.id));
     const delBtn = tr.querySelector(".delete-btn");
@@ -292,10 +356,8 @@ function renderVaultTable() {
 function vaultView(id) {
   const found = vaultEntries.find(x => x.id === id);
   if (!found) return;
-  // Show and optionally copy to clipboard
   const show = confirm(`Account: ${found.site}\nUser: ${found.username}\n\nShow password?`);
   if (show) {
-    // show in alert and copy to clipboard if available
     alert(`Password: ${found.password}`);
     if (navigator.clipboard) {
       navigator.clipboard.writeText(found.password).catch(() => {});
@@ -310,32 +372,46 @@ function vaultDelete(id) {
   renderVaultTable();
 }
 
-/* -------------------- Combined Export / Import -------------------- */
+/* -------------------- Combined Export / Import (with iframe messaging) -------------------- */
 function exportJSON() {
-  let budgetData = null;
-  const iframe = document.querySelector("#budgetView iframe");
-  try {
-    if (iframe && iframe.contentWindow) {
-      const raw = iframe.contentWindow.localStorage.getItem("budgetData_v2");
-      budgetData = raw ? JSON.parse(raw) : null;
-    }
-  } catch (e) {
-    // cross-origin or file:// access may fail; fallback to parent storage
-    try {
-      const rawParent = localStorage.getItem("budgetData_v2");
-      budgetData = rawParent ? JSON.parse(rawParent) : null;
-    } catch (err) {
-      budgetData = null;
-    }
+  // Request budget data from iframe; if no response in X ms fallback to parent storage
+  const iframe = document.getElementById("budgetIframe");
+  const timeout = setTimeout(() => {
+    // fallback
+    const rawParent = localStorage.getItem("budgetData_v2");
+    const budgetData = rawParent ? JSON.parse(rawParent) : null;
+    finalizeExport(budgetData);
+  }, 800);
+
+  function finalizeExport(budgetData) {
+    clearTimeout(timeout);
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      tasks,
+      vault: vaultEntries,
+      budget: budgetData
+    };
+    downloadObjectAsJson(payload, `kanban-backup-${(new Date()).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`);
   }
 
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    tasks,
-    vault: vaultEntries,
-    budget: budgetData
-  };
-  downloadObjectAsJson(payload, `kanban-backup-${(new Date()).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`);
+  // Listen for response just once
+  function handleMessage(ev) {
+    if (!ev.data || ev.data.type !== "budgetDataResponse") return;
+    window.removeEventListener("message", handleMessage);
+    finalizeExport(ev.data.payload);
+  }
+  window.addEventListener("message", handleMessage);
+
+  // Ask iframe
+  try {
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ type: "requestBudget" }, "*");
+    } else {
+      // no iframe available, fallback will trigger
+    }
+  } catch (err) {
+    // fallback
+  }
 }
 
 function importJSON() {
@@ -358,17 +434,15 @@ function importJSON() {
           saveVaultToLocal();
         }
         if (parsed.budget) {
-          // attempt to write to iframe localStorage (same-origin)
-          const iframe = document.querySelector("#budgetView iframe");
+          const iframe = document.getElementById("budgetIframe");
           try {
             if (iframe && iframe.contentWindow) {
-              iframe.contentWindow.localStorage.setItem("budgetData_v2", JSON.stringify(parsed.budget));
-              iframe.contentWindow.location.reload();
+              // send import message to iframe
+              iframe.contentWindow.postMessage({ type: "importBudget", payload: parsed.budget }, "*");
             } else {
               localStorage.setItem("budgetData_v2", JSON.stringify(parsed.budget));
             }
           } catch (err) {
-            // fallback
             localStorage.setItem("budgetData_v2", JSON.stringify(parsed.budget));
           }
         }
@@ -386,22 +460,65 @@ function importJSON() {
   input.click();
 }
 
-/* -------------------- Initialization -------------------- */
-(function init() {
-  // wire calendar nav buttons if present
-  const headerBtns = document.querySelectorAll(".calendar-header button");
-  if (headerBtns && headerBtns.length >= 2) {
-    headerBtns[0].addEventListener("click", prevMonth);
-    headerBtns[1].addEventListener("click", nextMonth);
+/* -------------------- Theme Toggle (emoji next to logo) -------------------- */
+function initTheme() {
+  const btn = document.getElementById("themeToggle");
+  const saved = localStorage.getItem("myboard_theme");
+  if (saved === "light") {
+    document.body.classList.add("light");
+    btn.textContent = "☀️";
+  } else {
+    document.body.classList.add("dark");
+    btn.textContent = "🌙";
   }
 
-  // close modal by clicking backdrop
+  btn.addEventListener("click", () => {
+    const isDark = document.body.classList.contains("dark");
+    if (isDark) {
+      document.body.classList.remove("dark");
+      document.body.classList.add("light");
+      btn.textContent = "☀️";
+      btn.classList.add("rotate");
+      setTimeout(()=>btn.classList.remove("rotate"), 400);
+      localStorage.setItem("myboard_theme", "light");
+    } else {
+      document.body.classList.remove("light");
+      document.body.classList.add("dark");
+      btn.textContent = "🌙";
+      btn.classList.add("rotate");
+      setTimeout(()=>btn.classList.remove("rotate"), 400);
+      localStorage.setItem("myboard_theme", "dark");
+    }
+
+    // send theme to budget iframe
+    const iframe = document.getElementById("budgetIframe");
+    try {
+      if (iframe && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: "setTheme", payload: document.body.classList.contains("light") ? "light" : "dark" }, "*");
+      }
+    } catch(e){}
+  });
+}
+
+/* -------------------- Initialization -------------------- */
+(function init() {
+  // wire calendar nav buttons
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  if (prevBtn) prevBtn.addEventListener("click", prevMonth);
+  if (nextBtn) nextBtn.addEventListener("click", nextMonth);
+
+  // modal close by backdrop
   const modal = document.getElementById("taskModal");
   if (modal) {
     modal.addEventListener("click", e => {
       if (e.target.id === "taskModal") closeModal();
     });
   }
+
+  // modal save button
+  const saveBtn = document.getElementById("saveTaskBtn");
+  if (saveBtn) saveBtn.addEventListener("click", saveTask);
 
   // Setup column drop behavior
   setupColumnDrop();
@@ -411,4 +528,29 @@ function importJSON() {
   renderCalendar();
   renderVaultTable();
   showKanban();
+
+  // theme
+  initTheme();
+
+  // handle messages from iframe (budget)
+  window.addEventListener("message", ev => {
+    // accept messages from iframe (no origin check here; add if needed)
+    const { data } = ev;
+    if (!data || !data.type) return;
+    if (data.type === "budgetDataResponse") {
+      // handled in export flow via temporary listener
+    } else if (data.type === "importBudgetAck") {
+      // optional ack from iframe
+      console.info("Budget iframe imported data");
+    }
+  });
+
+  // responsive: collapse sidebar on small screens
+  const mq = window.matchMedia("(max-width:700px)");
+  function handleM(q) {
+    const sb = document.getElementById("sidebar");
+    if (q.matches) sb.classList.add("collapsed"); else sb.classList.remove("collapsed");
+  }
+  handleM(mq);
+  mq.addListener(handleM);
 })();
