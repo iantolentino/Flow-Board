@@ -1,21 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Kanban + Calendar + Vault</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <aside class="sidebar">
-    <h1>⚡ MyBoard</h1>
-    <button onclick="openModal()">➕ Add Task</button>
-    <button onclick="exportJSON()">💾 Export JSON</button>
-    <button onclick="importJSON()">📂 Import JSON</button>
-    <button onclick="showKanban()">📋 Kanban Board</button>
-    <button onclick="showCalendar()">🗓 Calendar</button>
-    <button onclick="showVault()">🔐 Password Vault</button>
-    <button onclick="showBudget()">💰 Budget Tracker</button>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-top">
+      <div class="brand">
+        <h1>⚡ MyBoard</h1>
+        <!-- Theme emoji toggle (next to logo) -->
+        <button id="themeToggle" class="theme-emoji" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+      </div>
+
+      <div class="side-actions">
+        <button id="addTaskBtn" onclick="openModal()">➕ Add Task</button>
+        <button id="exportBtn" onclick="exportJSON()">💾 Export JSON</button>
+        <button id="importBtn" onclick="importJSON()">📂 Import JSON</button>
+      </div>
+    </div>
+
+    <nav class="side-nav">
+      <button onclick="showKanban()">📋 Kanban Board</button>
+      <button onclick="showCalendar()">🗓 Calendar</button>
+      <button onclick="showVault()">🔐 Password Vault</button>
+      <button onclick="showBudget()">💰 Budget Tracker</button>
+    </nav>
   </aside>
 
   <div class="main">
@@ -27,29 +39,36 @@
     </div>
 
     <!-- Kanban -->
-    <main id="kanbanView">
+    <main id="kanbanView" class="kanban" aria-label="Kanban board">
       <div class="column" data-status="todo">
         <h3>To Do</h3>
-        <div class="task-list" id="todo"></div>
+        <div class="task-list" id="todo" aria-label="To Do list"></div>
       </div>
       <div class="column" data-status="inprogress">
         <h3>In Progress</h3>
-        <div class="task-list" id="inprogress"></div>
+        <div class="task-list" id="inprogress" aria-label="In Progress list"></div>
       </div>
       <div class="column" data-status="done">
         <h3>Done</h3>
-        <div class="task-list" id="done"></div>
+        <div class="task-list" id="done" aria-label="Done list"></div>
       </div>
     </main>
 
     <!-- Calendar -->
-    <div class="calendar hidden" id="calendarView">
+    <div class="calendar hidden" id="calendarView" aria-live="polite">
       <div class="calendar-header">
-        <button onclick="prevMonth()">◀</button>
+        <button id="prevBtn">◀</button>
         <h3 id="calendarTitle"></h3>
-        <button onclick="nextMonth()">▶</button>
+        <button id="nextBtn">▶</button>
       </div>
-      <div class="calendar-grid" id="calendarGrid"></div>
+
+      <!-- Unscheduled tasks (shows items without dueDate) -->
+      <div class="unscheduled" aria-label="Unscheduled tasks">
+        <h4>Unscheduled Tasks</h4>
+        <div id="unscheduledList" class="unscheduled-list"></div>
+      </div>
+
+      <div class="calendar-grid" id="calendarGrid" aria-label="Calendar grid"></div>
     </div>
 
     <!-- Vault -->
@@ -61,36 +80,40 @@
         <input type="password" id="vaultPass" placeholder="Password">
         <button onclick="addVaultEntry()">Add</button>
       </div>
-      <table class="vault-table">
-        <thead>
-          <tr><th>Account</th><th>Username</th><th>Password</th><th>Actions</th></tr>
-        </thead>
-        <tbody id="vaultTable"></tbody>
-      </table>
+      <div class="vault-table-wrap">
+        <table class="vault-table" role="table" aria-label="Vault entries">
+          <thead>
+            <tr><th>Account</th><th>Username</th><th>Password</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="vaultTable"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- Budget -->
     <div class="budget hidden" id="budgetView">
-      <iframe src="budget.html" frameborder="0"></iframe>
+      <iframe id="budgetIframe" src="budget.html" frameborder="0" aria-label="Budget tracker"></iframe>
     </div>
   </div>
 
   <!-- Task Modal -->
-  <div class="modal hidden" id="taskModal">
+  <div class="modal hidden" id="taskModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
     <div class="modal-content">
-      <h3>New Task</h3>
-      <input type="text" id="taskTitle" placeholder="Task title">
+      <h3 id="modalTitle">New Task</h3>
+      <input type="text" id="taskTitle" placeholder="Task title" />
       <textarea id="taskDesc" placeholder="Description"></textarea>
       <label>Due Date: <input type="date" id="taskDate"></label>
       <label>Priority:
         <select id="taskPriority">
           <option value="low">Low</option>
-          <option value="medium">Medium</option>
+          <option value="medium" selected>Medium</option>
           <option value="high">High</option>
         </select>
       </label>
-      <button onclick="saveTask()">Save</button>
-      <button onclick="closeModal()">Cancel</button>
+      <div class="modal-actions">
+        <button id="saveTaskBtn">Save</button>
+        <button onclick="closeModal()" class="ghost">Cancel</button>
+      </div>
     </div>
   </div>
 
