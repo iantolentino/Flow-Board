@@ -1,0 +1,203 @@
+/* Dark Theme Variables */
+body.dark {
+  --bg-primary: #0a0c10;
+  --bg-secondary: #1a1d24;
+  --bg-tertiary: #252a33;
+  --text-primary: #e8eaed;
+  --text-secondary: #9aa0a8;
+  --text-muted: #6c757d;
+  --border-color: #2d323c;
+  --accent-primary: #3b82f6;
+  --accent-secondary: #10b981;
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+}
+
+/* Light Theme Variables */
+body.light {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --accent-primary: #3b82f6;
+  --accent-secondary: #10b981;
+  --success: #10b981;
+  --error: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+}
+
+/* Theme Transition */
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Print Styles */
+@media print {
+  .sidebar,
+  .vault-actions,
+  .task-actions,
+  .budget-actions,
+  .modal,
+  .toast-container {
+    display: none !important;
+  }
+  
+  .main-content {
+    margin-left: 0 !important;
+    padding: 0 !important;
+  }
+  
+  .kanban-board,
+  .calendar-grid {
+    break-inside: avoid;
+  }
+  
+  .task-card,
+  .calendar-day {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  body {
+    --bg-primary: #000000;
+    --bg-secondary: #000000;
+    --bg-tertiary: #1a1a1a;
+    --text-primary: #ffffff;
+    --text-secondary: #ffffff;
+    --border-color: #ffffff;
+  }
+  
+  body.light {
+    --bg-primary: #ffffff;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f0f0f0;
+    --text-primary: #000000;
+    --text-secondary: #000000;
+    --border-color: #000000;
+  }
+  
+  .btn,
+  .task-card,
+  .calendar-day {
+    border-width: 2px;
+  }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus Styles for Accessibility */
+:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Selection Styles */
+::selection {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Mobile Menu Toggle */
+.mobile-menu-toggle {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 1000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-toggle {
+    display: block;
+  }
+  
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+  }
+  
+  .sidebar.open {
+    transform: translateX(0);
+  }
+}
+
+/* Dark Mode Toggle Animation */
+.theme-toggle {
+  transition: transform 0.5s ease;
+}
+
+.theme-toggle.rotate {
+  transform: rotate(360deg);
+}
+
+/* Custom Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-5px);
+  }
+  75% {
+    transform: translateX(5px);
+  }
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+.shake {
+  animation: shake 0.5s ease;
+}
+
+/* Responsive Typography */
+@media (max-width: 768px) {
+  body {
+    font-size: 14px;
+  }
+  
+  h1 {
+    font-size: 1.5rem;
+  }
+  
+  h2 {
+    font-size: 1.25rem;
+  }
+  
+  h3 {
+    font-size: 1.125rem;
+  }
+}

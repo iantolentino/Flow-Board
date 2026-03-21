@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: myboard
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-myboard123}
+      POSTGRES_DB: myboard
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../src/server/db/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myboard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - myboard-network
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://myboard:${DB_PASSWORD:-myboard123}@postgres:5432/myboard
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production}
+      SESSION_SECRET: ${SESSION_SECRET:-dev-session-secret-change-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../src:/app/src
+      - ../logs:/app/logs
+    command: npm run dev
+    networks:
+      - myboard-network
+
+volumes:
+  postgres_data:
+
+networks:
+  myboard-network:
+    driver: bridge
