@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "src/server/server.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "client/public/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "src/server/server.js"
+    },
+    {
+      "src": "/css/(.*)",
+      "dest": "/client/public/css/$1"
+    },
+    {
+      "src": "/js/(.*)",
+      "dest": "/client/public/js/$1"
+    },
+    {
+      "src": "/assets/(.*)",
+      "dest": "/client/public/assets/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/client/public/index.html"
+    }
+  ],
+  "env": {
+    "USE_SQLITE": "true",
+    "NODE_ENV": "production"
+  }
+}
