@@ -3,13 +3,13 @@ const sqlite3 = require('sqlite3').verbose();
 const { open } = require('sqlite');
 const fs = require('fs');
 const path = require('path');
-const env = require('./environment');
 
 class DatabaseConnection {
   constructor() {
     this.db = null;
-    this.isSqlite = env.get('USE_SQLITE') === 'true';
-    this.init();
+    this.pool = null;
+    // On Vercel, always use SQLite with /tmp directory
+    this.isSqlite = true;
   }
 
   async init() {
@@ -18,15 +18,23 @@ class DatabaseConnection {
     } else {
       await this.initPostgres();
     }
+    await this.runMigrations();
+    return this;
   }
 
   async initSqlite() {
-    const dbPath = env.get('DATABASE_PATH', './data/myboard.db');
-    const dbDir = path.dirname(dbPath);
-    
-    // Ensure directory exists
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
+    // Use /tmp on Vercel, local data folder otherwise
+    let dbPath;
+    if (process.env.VERCEL) {
+      dbPath = '/tmp/myboard.db';
+      console.log('Running on Vercel, using /tmp/myboard.db');
+    } else {
+      dbPath = path.join(__dirname, '../../../data/myboard.db');
+      const dbDir = path.dirname(dbPath);
+      if (!fs.existsSync(dbDir)) {
+        fs.mkdirSync(dbDir, { recursive: true });
+      }
+      console.log('Local development, using:', dbPath);
     }
     
     this.db = await open({
@@ -34,38 +42,17 @@ class DatabaseConnection {
       driver: sqlite3.Database
     });
     
-    console.log('SQLite database connected:', dbPath);
-    await this.runMigrations();
-  }
-
-  async initPostgres() {
-    this.pool = new Pool({
-      connectionString: env.get('DATABASE_URL'),
-      max: 20,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 2000
-    });
-    
-    console.log('PostgreSQL database connected');
-    await this.runMigrations();
+    console.log('✅ SQLite database connected');
   }
 
   async runMigrations() {
-    if (this.isSqlite) {
-      await this.runSqliteMigrations();
-    } else {
-      await this.runPostgresMigrations();
-    }
-  }
-
-  async runSqliteMigrations() {
     const migrations = [
       `CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         email TEXT UNIQUE,
         password_hash TEXT,
-        is_guest BOOLEAN DEFAULT 0,
+        is_guest INTEGER DEFAULT 0,
         last_login DATETIME,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )`,
@@ -109,88 +96,22 @@ class DatabaseConnection {
         total_money REAL DEFAULT 0,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )`
+      )`,
+      
+      `CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_vault_entries_user_id ON vault_entries(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_budget_entries_user_id ON budget_entries(user_id)`
     ];
     
     for (const sql of migrations) {
       await this.db.exec(sql);
     }
-    console.log('SQLite migrations completed');
-  }
-
-  async runPostgresMigrations() {
-    const client = await this.pool.connect();
-    try {
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS users (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          username VARCHAR(50) NOT NULL UNIQUE,
-          email VARCHAR(255) UNIQUE,
-          password_hash VARCHAR(255),
-          is_guest BOOLEAN DEFAULT FALSE,
-          last_login TIMESTAMP,
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-      
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS tasks (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          title VARCHAR(200) NOT NULL,
-          description TEXT,
-          due_date DATE,
-          priority VARCHAR(20) CHECK (priority IN ('low', 'medium', 'high')),
-          status VARCHAR(20) CHECK (status IN ('todo', 'inprogress', 'done')),
-          created_at TIMESTAMP DEFAULT NOW(),
-          updated_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-      
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS vault_entries (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          site_name VARCHAR(200) NOT NULL,
-          username VARCHAR(200) NOT NULL,
-          password_encrypted JSONB NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-      
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS budget_entries (
-          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          date DATE NOT NULL,
-          type VARCHAR(20) CHECK (type IN ('Expense', 'Savings')),
-          category VARCHAR(50) NOT NULL,
-          amount DECIMAL(10,2) NOT NULL,
-          created_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-      
-      await client.query(`
-        CREATE TABLE IF NOT EXISTS budget_totals (
-          user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-          total_money DECIMAL(10,2) DEFAULT 0,
-          updated_at TIMESTAMP DEFAULT NOW()
-        )
-      `);
-      
-      console.log('PostgreSQL migrations completed');
-    } finally {
-      client.release();
-    }
+    console.log('✅ Migrations completed');
   }
 
   async query(sql, params = []) {
-    if (this.isSqlite) {
-      return this.db.all(sql, params);
-    } else {
-      const result = await this.pool.query(sql, params);
-      return result.rows;
-    }
+    return this.db.all(sql, params);
   }
 
   async queryOne(sql, params = []) {
@@ -199,18 +120,12 @@ class DatabaseConnection {
   }
 
   async execute(sql, params = []) {
-    if (this.isSqlite) {
-      return this.db.run(sql, params);
-    } else {
-      return this.pool.query(sql, params);
-    }
+    return this.db.run(sql, params);
   }
 
   async end() {
-    if (this.isSqlite) {
+    if (this.db) {
       await this.db.close();
-    } else {
-      await this.pool.end();
     }
   }
 }
