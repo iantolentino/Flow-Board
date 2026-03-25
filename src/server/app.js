@@ -4,9 +4,6 @@ const cors = require('cors');
 const compression = require('compression');
 const path = require('path');
 const env = require('./config/environment');
-const logger = require('./utils/logger');
-const errorHandler = require('./middleware/errorHandler');
-const rateLimiter = require('./middleware/rateLimiter');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -25,7 +22,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "https:"],
+      connectSrc: ["'self'"],
       fontSrc: ["'self'"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
@@ -49,48 +46,21 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Static files
+// Static files - IMPORTANT: Point to correct client directory
 app.use(express.static(path.join(__dirname, '../../client/public')));
 app.use('/css', express.static(path.join(__dirname, '../../client/css')));
 app.use('/js', express.static(path.join(__dirname, '../../client/js')));
 app.use('/assets', express.static(path.join(__dirname, '../../client/assets')));
 
-// Request logging
-app.use((req, res, next) => {
-  const start = Date.now();
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    logger.info(`${req.method} ${req.originalUrl}`, {
-      method: req.method,
-      url: req.originalUrl,
-      status: res.statusCode,
-      duration,
-      ip: req.ip,
-      userAgent: req.get('user-agent')
-    });
-  });
-  next();
-});
-
-// Rate limiting
-app.use('/api/', rateLimiter.apiLimiter());
-
 // Health check endpoint
 app.get('/health', (req, res) => {
-  const db = require('./config/database');
-  const pool = db.pool;
-  
-  const health = {
+  res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    services: {
-      database: pool ? 'connected' : 'disconnected'
-    },
-    version: process.env.npm_package_version || '2.0.0'
-  };
-  
-  res.status(200).json(health);
+    version: process.env.npm_package_version || '2.0.0',
+    platform: process.env.VERCEL ? 'vercel' : 'local'
+  });
 });
 
 // API routes
@@ -105,7 +75,14 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../../client/public/index.html'));
 });
 
-// Error handling middleware (must be last)
-app.use(errorHandler);
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.statusCode || 500).json({
+    error: err.message || 'Internal Server Error',
+    status: err.statusCode || 500,
+    timestamp: new Date().toISOString()
+  });
+});
 
 module.exports = app;
