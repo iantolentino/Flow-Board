@@ -11,74 +11,76 @@ require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'my-secret-key-change-this';
+const JWT_SECRET = process.env.JWT_SECRET || 'vercel-default-secret-change-this-in-production';
 
 // Database setup
 let db;
 
 async function initDatabase() {
-  db = await open({
-    filename: './data/myboard.db',
-    driver: sqlite3.Database
-  });
-  
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY,
-      username TEXT UNIQUE,
-      email TEXT UNIQUE,
-      password TEXT,
-      is_guest INTEGER DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
+  try {
+    // Use writable directory on Vercel
+    const dbPath = process.env.VERCEL 
+      ? '/tmp/myboard.db'  // Vercel's writable temp directory
+      : './data/myboard.db';
     
-    CREATE TABLE IF NOT EXISTS tasks (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      title TEXT,
-      description TEXT,
-      due_date TEXT,
-      priority TEXT,
-      status TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
+    console.log(`📁 Using database at: ${dbPath}`);
     
-    CREATE TABLE IF NOT EXISTS vault_entries (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      site_name TEXT,
-      username TEXT,
-      password TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
+    db = await open({
+      filename: dbPath,
+      driver: sqlite3.Database
+    });
     
-    CREATE TABLE IF NOT EXISTS budget_entries (
-      id TEXT PRIMARY KEY,
-      user_id TEXT,
-      date TEXT,
-      type TEXT,
-      category TEXT,
-      amount REAL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(user_id) REFERENCES users(id)
-    );
-  `);
-  
-  console.log('✅ Database initialized');
+    // Create tables if they don't exist
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE,
+        email TEXT UNIQUE,
+        password_hash TEXT,
+        is_guest INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        title TEXT,
+        description TEXT,
+        due_date TEXT,
+        priority TEXT,
+        status TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+      
+      CREATE TABLE IF NOT EXISTS vault_entries (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        site_name TEXT,
+        username TEXT,
+        password TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+      
+      CREATE TABLE IF NOT EXISTS budget_entries (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        date TEXT,
+        type TEXT,
+        category TEXT,
+        amount REAL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
+    `);
+    
+    console.log('✅ Database initialized');
+  } catch (error) {
+    console.error('❌ Database initialization failed:', error);
+    throw error;
+  }
 }
-
-// Middleware
-app.use(helmet({
-  contentSecurityPolicy: false
-}));
-app.use(cors());
-app.use(compression());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, '../client/public')));
-app.use('/css', express.static(path.join(__dirname, '../client/css')));  
-app.use('/js', express.static(path.join(__dirname, '../client/js')));  
 
 // Auth middleware
 const authenticate = async (req, res, next) => {
@@ -91,7 +93,7 @@ const authenticate = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await db.get('SELECT * FROM users WHERE id = ?', decoded.id);
-    req.user = user;
+    req.user = user || { id: 'guest', isGuest: true };
     next();
   } catch (err) {
     req.user = { id: 'guest', isGuest: true };
@@ -99,11 +101,29 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+// Middleware
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
+app.use(cors());
+app.use(compression());
+app.use(express.json());
+
+// Serve static files from client/public
+app.use(express.static(path.join(__dirname, '../../client/public')));
+app.use('/css', express.static(path.join(__dirname, '../../client/css')));
+app.use('/js', express.static(path.join(__dirname, '../../client/js')));
+app.use('/assets', express.static(path.join(__dirname, '../../client/assets')));
+
 app.use(authenticate);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    platform: process.env.VERCEL ? 'vercel' : 'local'
+  });
 });
 
 // Auth routes
@@ -119,7 +139,7 @@ app.post('/api/auth/register', async (req, res) => {
   const hashedPassword = await bcrypt.hash(password, 10);
   
   await db.run(
-    'INSERT INTO users (id, username, email, password) VALUES (?, ?, ?, ?)',
+    'INSERT INTO users (id, username, email, password_hash) VALUES (?, ?, ?, ?)',
     [id, username, email, hashedPassword]
   );
   
@@ -137,7 +157,7 @@ app.post('/api/auth/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
   
-  const valid = await bcrypt.compare(password, user.password);
+  const valid = await bcrypt.compare(password, user.password_hash);
   if (!valid) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
@@ -159,6 +179,27 @@ app.post('/api/auth/guest', async (req, res) => {
   const token = jwt.sign({ id, username, isGuest: true }, JWT_SECRET, { expiresIn: '1d' });
   
   res.json({ user, token, isGuest: true });
+});
+
+app.get('/api/auth/validate', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ error: 'No token' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (decoded.isGuest) {
+      return res.json({ user: decoded });
+    }
+    const user = await db.get('SELECT id, username, email FROM users WHERE id = ?', decoded.id);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    res.json({ user });
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
 });
 
 // Tasks routes
@@ -297,20 +338,20 @@ app.delete('/api/budget/entries/:id', async (req, res) => {
   res.status(204).send();
 });
 
-// Serve frontend
+// Serve index.html for all other routes (SPA support)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../client/public/index.html'));
+  res.sendFile(path.join(__dirname, '../../client/public/index.html'));
 });
 
-// Start server
-async function start() {
-  await initDatabase();
-  app.listen(PORT, () => {
-    console.log(`\n✅ Server running at http://localhost:${PORT}`);
-    console.log('\n🎉 MyBoard is ready!');
-    console.log('   - Register a new account');
-    console.log('   - Or click "Continue as Guest"\n');
-  });
+// For Vercel serverless function
+if (!process.env.VERCEL) {
+  // Start server only if not on Vercel
+  initDatabase().then(() => {
+    app.listen(PORT, () => {
+      console.log(`\n✅ Server running at http://localhost:${PORT}`);
+    });
+  }).catch(console.error);
 }
 
-start().catch(console.error);
+// Export for Vercel
+module.exports = app;
