@@ -1,8 +1,5 @@
 const express = require('express');
 const path = require('path');
-const helmet = require('helmet');
-const cors = require('cors');
-const compression = require('compression');
 const sqlite3 = require('sqlite3').verbose();
 const { open } = require('sqlite');
 const jwt = require('jsonwebtoken');
@@ -10,27 +7,22 @@ const bcrypt = require('bcrypt');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'vercel-default-secret-change-this-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'my-secret-key-change-this';
 
 // Database setup
 let db;
 
 async function initDatabase() {
   try {
-    // Use writable directory on Vercel
-    const dbPath = process.env.VERCEL 
-      ? '/tmp/myboard.db'  // Vercel's writable temp directory
-      : './data/myboard.db';
-    
-    console.log(`📁 Using database at: ${dbPath}`);
+    // Use /tmp for Vercel (writable directory)
+    const dbPath = '/tmp/myboard.db';
     
     db = await open({
       filename: dbPath,
       driver: sqlite3.Database
     });
     
-    // Create tables if they don't exist
+    // Create tables
     await db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
@@ -73,12 +65,18 @@ async function initDatabase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY(user_id) REFERENCES users(id)
       );
+      
+      CREATE TABLE IF NOT EXISTS budget_totals (
+        user_id TEXT PRIMARY KEY,
+        total_money REAL DEFAULT 0,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+      );
     `);
     
     console.log('✅ Database initialized');
   } catch (error) {
-    console.error('❌ Database initialization failed:', error);
-    throw error;
+    console.error('Database error:', error);
   }
 }
 
@@ -102,19 +100,8 @@ const authenticate = async (req, res, next) => {
 };
 
 // Middleware
-app.use(helmet({
-  contentSecurityPolicy: false
-}));
-app.use(cors());
-app.use(compression());
 app.use(express.json());
-
-// Serve static files from client/public
-app.use(express.static(path.join(__dirname, '../../client/public')));
-app.use('/css', express.static(path.join(__dirname, '../../client/css')));
-app.use('/js', express.static(path.join(__dirname, '../../client/js')));
-app.use('/assets', express.static(path.join(__dirname, '../../client/assets')));
-
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(authenticate);
 
 // Health check
@@ -122,7 +109,7 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy', 
     timestamp: new Date().toISOString(),
-    platform: process.env.VERCEL ? 'vercel' : 'local'
+    database: db ? 'connected' : 'disconnected'
   });
 });
 
@@ -338,20 +325,35 @@ app.delete('/api/budget/entries/:id', async (req, res) => {
   res.status(204).send();
 });
 
-// Serve index.html for all other routes (SPA support)
+// Serve frontend
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, '../../client/public/index.html'));
+  res.sendFile(path.join(__dirname, 'public/index.html'));
 });
 
-// For Vercel serverless function
-if (!process.env.VERCEL) {
-  // Start server only if not on Vercel
-  initDatabase().then(() => {
+// Initialize database and start server
+async function start() {
+  await initDatabase();
+  
+  // For Vercel, we need to export the app
+  if (process.env.VERCEL) {
+    console.log('Running on Vercel');
+  } else {
+    const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-      console.log(`\n✅ Server running at http://localhost:${PORT}`);
+      console.log(`Server running on port ${PORT}`);
     });
-  }).catch(console.error);
+  }
 }
 
+// Initialize for serverless
+let initialized = false;
+const handler = async (req, res) => {
+  if (!initialized) {
+    await initDatabase();
+    initialized = true;
+  }
+  return app(req, res);
+};
+
 // Export for Vercel
-module.exports = app;
+module.exports = handler;
