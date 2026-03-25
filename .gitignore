@@ -64,3 +64,11 @@ pids
 *.pid
 *.seed
 *.pid.lock
+
+node_modules/
+data/
+*.db
+*.db-journal
+.env
+.DS_Store
+.vercel
