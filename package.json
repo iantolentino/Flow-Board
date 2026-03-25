@@ -1,13 +1,11 @@
 {
   "name": "myboard",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "description": "Enterprise Productivity Suite",
-  "main": "src/server/server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node src/server/server.js",
-    "dev": "nodemon src/server/server.js",
-    "vercel-build": "npm install && npm run setup",
-    "setup": "node scripts/setup-vercel.js"
+    "start": "node server.js",
+    "vercel-build": "npm install"
   },
   "dependencies": {
     "bcrypt": "^5.1.0",
@@ -19,9 +17,6 @@
     "jsonwebtoken": "^9.0.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.6"
-  },
-  "devDependencies": {
-    "nodemon": "^2.0.22"
   },
   "engines": {
     "node": "18.x"
