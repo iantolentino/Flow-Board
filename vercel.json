@@ -28,6 +28,10 @@
       "dest": "/src/client/public/assets/$1"
     },
     {
+      "src": "/favicon.ico",
+      "dest": "/src/client/public/favicon.ico"
+    },
+    {
       "src": "/(.*)",
       "dest": "/src/client/public/index.html"
     }
